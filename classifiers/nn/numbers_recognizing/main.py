@@ -4,7 +4,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, RandomSampler
 
 from classifiers.nn.numbers_recognizing.linear_model import NumbersRecognizer
-from random.random_settings import determine_random
+from determining.random_settings import determine_random
 
 
 def main() -> None:
@@ -15,12 +15,12 @@ def main() -> None:
     # Скачивание и загрузка набора данных MNIST
     transform = transforms.Compose([transforms.ToTensor()])
     train_data = datasets.MNIST(
-        "data",
+        "../../../datasets/numbers_recognizing/data",
         train=True,
         download=False,
         transform=transform)
     test_data = datasets.MNIST(
-        "data",
+        "../../../datasets/numbers_recognizing/data",
         train=False,
         download=False,
         transform=transform)

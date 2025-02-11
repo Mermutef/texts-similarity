@@ -5,13 +5,17 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 import torch.optim as optim
 
-from classifiers.nn.model_template import ModelTemplate
 from statistic.statistic import Statistic
 
 
-class NumbersRecognizer(ModelTemplate):
+class NumbersRecognizer(nn.Module):
     def __init__(self):
         super().__init__()
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.train_stat: list[Statistic] = list()
+        self.test_stat: Statistic | None = None
+
         self.fc1 = nn.Linear(784, 86)
         self.fc2 = nn.Linear(86, 86)
         self.fc3 = nn.Linear(86, 86)

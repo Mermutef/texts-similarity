@@ -1,33 +1,31 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import random
 from PIL import Image
-import PIL.ImageOps
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 import torch
 
 
 class SiameseNetworkDataset(Dataset):
-    def __init__(self, imageFolderDataset, transform=None):
-        self.imageFolderDataset = imageFolderDataset
+    def __init__(self, image_folder_dataset, transform=None):
+        self.image_folder_dataset = image_folder_dataset
         self.transform = transform
 
     def __getitem__(self, index):
-        img0_tuple = random.choice(self.imageFolderDataset.imgs)
+        img0_tuple = random.choice(self.image_folder_dataset.imgs)
 
         # We need to approximately 50% of images to be in the same class
         should_get_same_class = random.randint(0, 1)
         if should_get_same_class:
             while True:
                 # Look until the same class image is found
-                img1_tuple = random.choice(self.imageFolderDataset.imgs)
+                img1_tuple = random.choice(self.image_folder_dataset.imgs)
                 if img0_tuple[1] == img1_tuple[1]:
                     break
         else:
 
             while True:
                 # Look until a different class image is found
-                img1_tuple = random.choice(self.imageFolderDataset.imgs)
+                img1_tuple = random.choice(self.image_folder_dataset.imgs)
                 if img0_tuple[1] != img1_tuple[1]:
                     break
 
@@ -45,4 +43,4 @@ class SiameseNetworkDataset(Dataset):
             np.array([int(img1_tuple[1] != img0_tuple[1])], dtype=np.float32))
 
     def __len__(self):
-        return len(self.imageFolderDataset.imgs)
+        return len(self.image_folder_dataset.imgs)
