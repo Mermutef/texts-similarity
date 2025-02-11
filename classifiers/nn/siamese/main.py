@@ -19,16 +19,22 @@ def main() -> None:
                                          ])
 
     train_dataset = SiameseNetworkDataset(
-        image_folder_dataset=datasets.ImageFolder(root="../../../datasets/siamese/data/faces/training/"),
+        image_folder_dataset=datasets.ImageFolder(
+            root="../../../datasets/siamese/data/faces/training/"),
         transform=transformation)
     test_dataset = SiameseNetworkDataset(
-        image_folder_dataset=datasets.ImageFolder(root="../../../datasets/siamese/data/faces/testing/"),
+        image_folder_dataset=datasets.ImageFolder(
+            root="../../../datasets/siamese/data/faces/testing/"),
         transform=transformation)
     trainset = DataLoader(train_dataset,
                           sampler=RandomSampler(train_dataset),
                           num_workers=8,
                           batch_size=64)
-    testset = DataLoader(test_dataset, num_workers=2, batch_size=1, sampler=RandomSampler(test_dataset))
+    testset = DataLoader(
+        test_dataset,
+        num_workers=2,
+        batch_size=1,
+        sampler=RandomSampler(test_dataset))
 
     model = SiameseNetwork().to(device)
     model.start_train(trainset)

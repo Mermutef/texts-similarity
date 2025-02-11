@@ -12,7 +12,8 @@ class NumbersRecognizer(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu')
         self.train_stat: list[Statistic] = list()
         self.test_stat: Statistic | None = None
 

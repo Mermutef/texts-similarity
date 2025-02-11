@@ -14,7 +14,8 @@ class SiameseNetwork(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu')
         self.train_stat: list[Statistic] = list()
         self.test_stat: Statistic | None = None
 
@@ -93,15 +94,21 @@ class SiameseNetwork(nn.Module):
             print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item()}')
 
     @staticmethod
-    def predict(output1: Tensor, output2: Tensor, limit: int = 0.4) -> list[int]:
+    def predict(
+            output1: Tensor,
+            output2: Tensor,
+            limit: int = 0.4) -> list[int]:
         res = []
         for o1, o2 in zip(output1, output2):
-            res.append(1 if 1 / (F.pairwise_distance(o1, o2).item() + 1) >= limit else 0)
+            res.append(1 if 1 /
+                       (F.pairwise_distance(o1, o2).item() +
+                        1) >= limit else 0)
         return res
 
     @staticmethod
     def test(output1: Tensor, output2: Tensor, limit: int = 0.4) -> int:
-            return 1 if 1 / (F.pairwise_distance(output1, output2).item() + 1) >= limit else 0
+        return 1 if 1 / (F.pairwise_distance(output1,
+                         output2).item() + 1) >= limit else 0
 
     def do_test(self, testset: DataLoader) -> None:
         self.eval()
