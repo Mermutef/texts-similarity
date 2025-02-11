@@ -42,15 +42,15 @@ def main() -> None:
 
     for i, (stat) in enumerate(model.train_stat):
         print(i)
-        print(f'Precision: {stat.precision}')
-        print(f'Recall: {stat.recall}')
-        print(f'F1 Score: {stat.f1}')
-        print(f'Loss: {stat.loss}')
+        print(f'Precision: {stat.precision:.3f}')
+        print(f'Recall: {stat.recall:.3f}')
+        print(f'F1 Score: {stat.f1:.3f}')
+        print(f'Loss: {stat.loss:.3f}')
 
     print()
-    print(f'Precision: {model.test_stat.precision}')
-    print(f'Recall: {model.test_stat.recall}')
-    print(f'F1 Score: {model.test_stat.f1}')
+    print(f'Precision: {model.test_stat.precision:.3f}')
+    print(f'Recall: {model.test_stat.recall:.3f}')
+    print(f'F1 Score: {model.test_stat.f1:.3f}')
 
 
 if __name__ == '__main__':

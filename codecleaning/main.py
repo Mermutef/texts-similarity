@@ -7,5 +7,5 @@ if __name__ == '__main__':
         dirnames[:] = [dir for dir in dirnames if dir not in exclude]
         for filename in filenames:
             if filename.endswith(".py") and filename != "__init__.py":
-                subprocess.run(["autopep8", "--in-place", "--aggressive",
-                                "--aggressive", f"{os.path.join(root, filename)}"])
+                subprocess.run(
+                    ["autopep8", "--in-place", "--aggressive", f"{os.path.join(root, filename)}"])

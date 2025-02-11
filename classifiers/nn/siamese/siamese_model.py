@@ -38,10 +38,10 @@ class SiameseNetwork(nn.Module):
             nn.Linear(384, 1024),
             nn.ReLU(inplace=True),
 
-            nn.Linear(1024, 256),
+            nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
 
-            nn.Linear(256, 2)
+            nn.Linear(512, 256)
         )
 
     def forward_once(self, x):
@@ -76,13 +76,14 @@ class SiameseNetwork(nn.Module):
                 X2_train = X2_train.to(self.device)
                 y_train = y_train.to(self.device)
 
+                optimizer.zero_grad()
+
                 output1, output2 = self(X1_train, X2_train)
                 predicted = self.predict(output1, output2)
                 loss = criterion(output1, output2, y_train)
                 y_pred.extend(predicted)
                 y_true.extend(y_train.cpu().numpy())
 
-                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
@@ -97,18 +98,16 @@ class SiameseNetwork(nn.Module):
     def predict(
             output1: Tensor,
             output2: Tensor,
-            limit: int = 0.4) -> list[int]:
+    ) -> list[int]:
         res = []
         for o1, o2 in zip(output1, output2):
-            res.append(1 if 1 /
-                       (F.pairwise_distance(o1, o2).item() +
-                        1) >= limit else 0)
+            SiameseNetwork.test(o1, o2)
         return res
 
     @staticmethod
-    def test(output1: Tensor, output2: Tensor, limit: int = 0.4) -> int:
+    def test(output1: Tensor, output2: Tensor, limit: float = 0.5) -> int:
         return 1 if 1 / (F.pairwise_distance(output1,
-                         output2).item() + 1) >= limit else 0
+                         output2).item() + 1) > limit else 0
 
     def do_test(self, testset: DataLoader) -> None:
         self.eval()
@@ -123,6 +122,8 @@ class SiameseNetwork(nn.Module):
 
             output1, output2 = self(X1_test, X2_test)
             predicted = self.test(output1, output2)
+            print(y_test)
+            print(predicted)
 
             y_pred.append(predicted)
             y_true.extend(y_test.cpu().numpy())
