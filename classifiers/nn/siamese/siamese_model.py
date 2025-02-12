@@ -21,28 +21,28 @@ class SiameseNetwork(nn.Module):
 
         # Setting up the Sequential of CNN Layers
         self.cnn1 = nn.Sequential(
-            nn.Conv2d(1, 96, kernel_size=11, stride=4),
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(1, 64, kernel_size=3),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2),
+            nn.BatchNorm2d(64),
+            nn.Dropout2d(p=.2),
 
-            nn.Conv2d(96, 256, kernel_size=5, stride=1),
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(64, 64, kernel_size=3),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),
+            nn.BatchNorm2d(64),
+            nn.Dropout2d(p=.2),
 
-            nn.Conv2d(256, 384, kernel_size=3, stride=1),
-            nn.ReLU(inplace=True)
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(64, 32, kernel_size=3),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(32),
+            nn.Dropout2d(p=.2),
         )
-
-        # Setting up the Fully Connected Layers
-        self.fc1 = nn.Sequential(
-            nn.Linear(384, 1024),
-            nn.ReLU(inplace=True),
-
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
-
-            nn.Linear(512, 256)
-        )
+        self.fc1 = nn.Linear(1 * 32 * 100 * 100, 500)
+        # self.fc1 = nn.Linear(2*1000, 500)
+        self.fc2 = nn.Linear(500, 500)
+        self.fc3 = nn.Linear(500, 2)
 
     def forward_once(self, x):
         # This function will be called for both images
@@ -50,6 +50,9 @@ class SiameseNetwork(nn.Module):
         output = self.cnn1(x)
         output = output.view(output.size()[0], -1)
         output = self.fc1(output)
+        output = F.relu(self.fc2(output))
+        output = self.fc3(output)
+
         return output
 
     def forward(self, input1, input2):
@@ -122,8 +125,6 @@ class SiameseNetwork(nn.Module):
 
             output1, output2 = self(X1_test, X2_test)
             predicted = self.test(output1, output2)
-            print(y_test)
-            print(predicted)
 
             y_pred.append(predicted)
             y_true.extend(y_test.cpu().numpy())
