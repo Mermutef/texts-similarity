@@ -101,7 +101,7 @@ class SiameseNetwork(nn.Module):
     ) -> list[int]:
         res = []
         for o1, o2 in zip(output1, output2):
-            SiameseNetwork.test(o1, o2)
+            res.append(SiameseNetwork.test(o1, o2))
         return res
 
     @staticmethod
