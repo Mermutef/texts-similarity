@@ -5,9 +5,33 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+import torchvision
+
+
 from losses.contrastive_loss import ContrastiveLoss
 from statistic.statistic import Statistic
 
+
+# Showing images
+def imshow(img, text=None):
+    npimg = img.numpy()
+    plt.axis("off")
+    if text:
+        plt.text(75, 8, text, style='italic', fontweight='bold',
+                 bbox={'facecolor': 'white', 'alpha': 0.8, 'pad': 10})
+
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.show()
+
+
+# Plotting data
+def show_plot(iteration, loss):
+    plt.plot(iteration, loss)
+    plt.show()
 
 # create the Siamese Neural Network
 class SiameseNetwork(nn.Module):
@@ -21,28 +45,28 @@ class SiameseNetwork(nn.Module):
 
         # Setting up the Sequential of CNN Layers
         self.cnn1 = nn.Sequential(
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(1, 64, kernel_size=3),
+            nn.Conv2d(1, 96, kernel_size=11, stride=4),
             nn.ReLU(inplace=True),
-            nn.BatchNorm2d(64),
-            nn.Dropout2d(p=.2),
+            nn.MaxPool2d(3, stride=2),
 
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(64, 64, kernel_size=3),
+            nn.Conv2d(96, 256, kernel_size=5, stride=1),
             nn.ReLU(inplace=True),
-            nn.BatchNorm2d(64),
-            nn.Dropout2d(p=.2),
+            nn.MaxPool2d(2, stride=2),
 
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(64, 32, kernel_size=3),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm2d(32),
-            nn.Dropout2d(p=.2),
+            nn.Conv2d(256, 384, kernel_size=3, stride=1),
+            nn.ReLU(inplace=True)
         )
-        self.fc1 = nn.Linear(1 * 32 * 100 * 100, 500)
-        # self.fc1 = nn.Linear(2*1000, 500)
-        self.fc2 = nn.Linear(500, 500)
-        self.fc3 = nn.Linear(500, 2)
+
+        # Setting up the Fully Connected Layers
+        self.fc1 = nn.Sequential(
+            nn.Linear(384, 1024),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(1024, 256),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(256, 2)
+        )
 
     def forward_once(self, x):
         # This function will be called for both images
@@ -50,9 +74,6 @@ class SiameseNetwork(nn.Module):
         output = self.cnn1(x)
         output = output.view(output.size()[0], -1)
         output = self.fc1(output)
-        output = F.relu(self.fc2(output))
-        output = self.fc3(output)
-
         return output
 
     def forward(self, input1, input2):
@@ -108,9 +129,9 @@ class SiameseNetwork(nn.Module):
         return res
 
     @staticmethod
-    def test(output1: Tensor, output2: Tensor, limit: float = 0.5) -> int:
-        return 1 if 1 / (F.pairwise_distance(output1,
-                         output2).item() + 1) > limit else 0
+    def test(output1: Tensor, output2: Tensor, limit: float = 0.4) -> int:
+        return 0 if 1 / (F.pairwise_distance(output1,
+                         output2).item() + 1) > limit else 1
 
     def do_test(self, testset: DataLoader) -> None:
         self.eval()
@@ -129,6 +150,8 @@ class SiameseNetwork(nn.Module):
             y_pred.append(predicted)
             y_true.extend(y_test.cpu().numpy())
 
+            concatenated = torch.cat((X1_test, X2_test), 0)
+            imshow(torchvision.utils.make_grid(concatenated), f'Prediction: {predicted} ({y_test.item()})')
         # Convert lists to tensors for calculation
         self.test_stat = Statistic(
             y_true=torch.tensor(y_true),
