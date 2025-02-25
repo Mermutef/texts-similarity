@@ -15,6 +15,5 @@ class Metrics:
 
         self.precision = tp / (tp + fp)
         self.recall = tp / (tp + fn)
-        self.f1 = 2 * (self.precision * self.recall) / \
-            (self.precision + self.recall)
+        self.f1 = 2 * (self.precision * self.recall) / (self.precision + self.recall)
         self.loss = loss
