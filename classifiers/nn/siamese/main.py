@@ -15,6 +15,8 @@ def main() -> None:
     # Автоматическое определение, где запускать код: на Nvidia GPU или на CPU
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    print(f"Running on {device}")
+
     # Resize the images and transform to tensors
     transformation = transforms.Compose([transforms.Resize((100, 100)),
                                          transforms.ToTensor()
