@@ -129,9 +129,8 @@ class SiameseNetwork(nn.Module):
         return res
 
     @staticmethod
-    def test(output1: Tensor, output2: Tensor, limit: float = 0.4) -> int:
-        return 0 if 1 / (F.pairwise_distance(output1,
-                         output2).item() + 1) > limit else 1
+    def test(output1: Tensor, output2: Tensor, limit: float = 1.0) -> int:
+        return 0 if F.pairwise_distance(output1,output2).item() < limit else 1
 
     def do_test(self, testset: DataLoader) -> None:
         self.eval()
