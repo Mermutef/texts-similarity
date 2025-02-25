@@ -1,8 +1,7 @@
 import torch
 
 
-def determine_random():
-    seed = 42
+def determine_random(seed: int) -> None:
     # установка детерминированного seed для случайных величин в torch
     torch.manual_seed(seed)
     # установка детерминированного seed для случайных величин в cud
