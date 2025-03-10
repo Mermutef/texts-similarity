@@ -13,7 +13,7 @@ class TextDataset(Dataset):
         for _, i in data.iterrows():
             doc.append([i[['unique_id']].values[0], i[['text1']].values[0], i[['text2']].values[0],
                         1 if i[['similarity']].values[0] else 0])
-        self.df = pd.DataFrame(doc, columns=["group_id", "text", "similarity"])
+        self.df = pd.DataFrame(doc, columns=["group_id", "text1", "text2", "similarity"])
 
     def __getitem__(self, index):
         row = self.df.iloc[[index]]
