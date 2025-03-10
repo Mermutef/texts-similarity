@@ -26,4 +26,4 @@ class TextDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.image_folder_dataset.imgs)
+        return len(self.df.values)
