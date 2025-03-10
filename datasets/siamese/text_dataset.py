@@ -17,8 +17,6 @@ class TextDataset(Dataset):
 
     def __getitem__(self, index):
         row = self.df.iloc[[index]]
-        print(row)
-        print(torch.from_numpy(np.array([row[['similarity']].values[0]], dtype=np.float32)))
         return (
             row[['text1']].values[0],
             row[['text2']].values[0],
