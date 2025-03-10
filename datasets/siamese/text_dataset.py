@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 import torch
+from transformers import GPT2Tokenizer
 
 
 class TextDataset(Dataset):
@@ -14,12 +15,13 @@ class TextDataset(Dataset):
             doc.append([i[['unique_id']].values[0], i[['text1']].values[0], i[['text2']].values[0],
                         1 if i[['similarity']].values[0] else 0])
         self.df = pd.DataFrame(doc, columns=["group_id", "text1", "text2", "similarity"])
+        self.tokenizer = GPT2Tokenizer.from_pretrained('openai-community/gpt2')
 
     def __getitem__(self, index):
         row = self.df.iloc[[index]]
         return (
-            row[['text1']].values[0],
-            row[['text2']].values[0],
+            self.tokenizer(row[['text1']].values[0], return_tensors='pt'),
+            self.tokenizer(row[['text2']].values[0], return_tensors='pt'),
             torch.from_numpy(np.array([row[['similarity']].values[0]], dtype=np.float32))
         )
 
