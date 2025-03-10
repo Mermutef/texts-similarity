@@ -4,7 +4,7 @@ from transformers import GPT2Model, GPT2Tokenizer
 
 from datasets.siamese.text_dataset import TextDataset
 
-PROJECT_ROOT = "/home/vladislav/experiments/texts-similarity"
+PROJECT_ROOT = "/home/mermutef/PycharmProjects/texts-similarity"
 
 import sys
 
@@ -129,13 +129,16 @@ def test(device, test_loader: DataLoader) -> Metrics:
 
     with (torch.no_grad()):
         for (text1, text2, similarity) in test_loader:
-            text1_enc, text2_enc, similarity = (
+            print(text1, text2, similarity)
+            print("*" * 20)
+            text1, text2, similarity = (
                 tokenizer(text1, return_tensors='pt').to(device),
                 tokenizer(text2, return_tensors='pt').to(device),
                 similarity.to(device)
             )
-            output1 = gpt_model(**text1_enc)[0].mean(1)
-            output2 = gpt_model(**text2_enc)[0].mean(1)
+            print(text1, text2, similarity)
+            output1 = gpt_model(**text1)[0].mean(1)
+            output2 = gpt_model(**text2)[0].mean(1)
             x1 = output1.detach().detach().cpu().numpy()
             x2 = output2.detach().detach().cpu().numpy()
             x1 = [x1[0] / np.linalg.norm(x1) if np.linalg.norm(x1) != 0 else x1[0]]
