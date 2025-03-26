@@ -1,8 +1,17 @@
+import random
+
 import pandas as pd
 
 import warnings
 
+from determining.random_settings import determine_random
+
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
+
+determine_random()
+
+def flatten(iterable):
+    return [item for row in iterable for item in row]
 
 df_map_1 = {}
 df_map_2 = {}
@@ -56,5 +65,32 @@ for question_page in excel_reader.sheet_names:
 
         answers[question_page].append({"answer": answer, "true_answer": true_answer, "mark": mark})
 
-df = pd.DataFrame([item for row in answers.values() for item in row])
-df.to_csv('corpus.csv', index=False)
+new_answers = {}
+for question_page in excel_reader.sheet_names:
+    new_answers[question_page] = []
+    i = -1
+    for page in excel_reader.sheet_names:
+        if page != question_page:
+            mark = 0
+            rand_answers = random.sample(answers[page], 4 + i)
+            i *= -1
+            true_answer = answers_map[question_page]
+            for answer in rand_answers:
+                new_answers[question_page].append({"answer": answer, "true_answer": true_answer, "mark": mark})
+
+df = pd.DataFrame(flatten(answers.values()))
+df1 = pd.DataFrame(flatten(new_answers.values()))
+print(sum(flatten(df[['mark']].values)))
+print(len(flatten(df[['mark']].values)))
+print(sum(flatten(df[['mark']].values)) * 1.0 / len(flatten(df[['mark']].values)))
+print()
+print(sum(flatten(df1[['mark']].values)))
+print(len(flatten(df1[['mark']].values)))
+print(sum(flatten(df1[['mark']].values)) * 1.0 / len(flatten(df1[['mark']].values)))
+df2 = pd.concat([df, df1], axis=0)
+print()
+print(sum(flatten(df2[['mark']].values)))
+print(len(flatten(df2[['mark']].values)))
+print(sum(flatten(df2[['mark']].values)) * 1.0 / len(flatten(df2[['mark']].values)))
+
+df2.to_csv('extended-corpus.csv', index=False)
