@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 from extensions import notify
 
 # Конфигурация
-MODEL_NAME = 'slone/LaBSE-en-ru-myv-v1'
+MODEL_NAME = 'hivaze/ru-e5-base'
 BATCH_SIZE = 12
 MAX_LENGTH = 128
 NUM_EPOCHS = 200
