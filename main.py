@@ -12,13 +12,12 @@ import logging
 logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
 import random
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertModel, BertTokenizer
+from transformers import BertTokenizer, BertModel
 from extensions import notify
 import pandas as pd
 import numpy as np
@@ -26,7 +25,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, precision_score, recall_score
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-
 import os
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -42,12 +40,9 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
-# Триплетный датасет
+# Триплетный датасет (упрощенный)
 class TripletDataset(Dataset):
     def __init__(self, data_dict, tokenizer, max_length=128):
-        """
-        data_dict: словарь {question_id: DataFrame}
-        """
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.data_dict = data_dict
@@ -57,7 +52,6 @@ class TripletDataset(Dataset):
     def _prepare_samples(self):
         samples = []
         for q_id, df in self.data_dict.items():
-            # Для каждого ответа студента создаем отдельный сэмпл
             for _, row in df.iterrows():
                 samples.append({
                     'question_id': q_id,
@@ -118,33 +112,39 @@ class TripletDataset(Dataset):
         }
 
 
-# Модель для эмбеддингов
+# Модель для эмбеддингов (упрощенная)
 class EmbeddingBERT(nn.Module):
     def __init__(self, model_name='bert-base-multilingual-cased'):
         super().__init__()
         self.bert = BertModel.from_pretrained(model_name)
+        # Размораживаем все слои
+        for param in self.bert.parameters():
+            param.requires_grad = True
+        # Умеренный dropout
+        self.dropout = nn.Dropout(0.3)
 
     def forward(self, input_ids, attention_mask):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        return outputs.last_hidden_state[:, 0, :]  # [CLS] токен
+        embeddings = outputs.last_hidden_state[:, 0, :]
+        return self.dropout(embeddings)
 
     def normalize(self, embeddings):
         return F.normalize(embeddings, p=2, dim=1)
 
 
-# Triplet Loss
+# Стандартный Triplet Loss
 class TripletLoss(nn.Module):
-    def __init__(self, margin=1.0):
+    def __init__(self, margin=0.5):
         super().__init__()
         self.margin = margin
 
     def forward(self, anchor, positive, negative):
-        # Косинусные расстояния
-        pos_sim = F.cosine_similarity(anchor, positive)
-        neg_sim = F.cosine_similarity(anchor, negative)
+        # Евклидовы расстояния
+        pos_dist = F.pairwise_distance(anchor, positive, p=2)
+        neg_dist = F.pairwise_distance(anchor, negative, p=2)
 
         # Triplet loss
-        losses = F.relu(neg_sim - pos_sim + self.margin)
+        losses = F.relu(pos_dist - neg_dist + self.margin)
         return losses.mean()
 
 
@@ -217,7 +217,7 @@ def calculate_metrics(model, dataloader, device, threshold=0.7):
     all_similarities = []
 
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Evaluating"):
+        for batch in tqdm(dataloader, desc="Calculating metrics"):
             anchor_ids = batch['anchor_ids'].to(device)
             anchor_mask = batch['anchor_mask'].to(device)
             positive_ids = batch['positive_ids'].to(device)
@@ -230,10 +230,16 @@ def calculate_metrics(model, dataloader, device, threshold=0.7):
             # Вычисляем косинусное сходство
             similarities = F.cosine_similarity(anchor_emb, positive_emb)
             all_similarities.extend(similarities.cpu().numpy())
+            all_labels.extend([1] * len(similarities))  # Метка 1 для положительных пар
 
-            # Метки: 1 если это настоящий положительный пример, 0 если негативный
-            labels = [1] * len(similarities)  # Всегда положительная пара
-            all_labels.extend(labels)
+            # Добавляем негативные примеры
+            negative_ids = batch['negative_ids'].to(device)
+            negative_mask = batch['negative_mask'].to(device)
+            negative_emb = model.normalize(model(negative_ids, negative_mask))
+
+            neg_similarity = F.cosine_similarity(anchor_emb, negative_emb)
+            all_similarities.extend(neg_similarity.cpu().numpy())
+            all_labels.extend([0] * len(neg_similarity))  # Метка 0 для негативных пар
 
     # Конвертируем сходство в предсказания
     predictions = [1 if sim > threshold else 0 for sim in all_similarities]
@@ -252,10 +258,10 @@ def calculate_metrics(model, dataloader, device, threshold=0.7):
 def main():
     # Конфигурация
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    BATCH_SIZE = 32
+    BATCH_SIZE = 12
     EPOCHS = 50
-    LR = 2e-5
-    MARGIN = 0.5
+    LR = 2e-5  # Стандартный LR для fine-tuning
+    MARGIN = 0.5  # Умеренный margin
     THRESHOLD = 0.7
 
     set_seed(42)
@@ -299,16 +305,15 @@ def main():
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     criterion = TripletLoss(margin=MARGIN)
 
-    # Обучение
+    # Обучение с ранней остановкой
     best_loss = float('inf')
+    best_f1 = 0
     train_losses = []
     val_losses = []
+    no_improve = 0
+    patience = 5
 
     for epoch in range(EPOCHS):
-        # # Динамическое увеличение маржи
-        # if epoch > 10:
-        #     criterion.margin = min(1.0, MARGIN + epoch * 0.05)
-
         # Обучение
         train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
         train_losses.append(train_loss)
@@ -325,15 +330,27 @@ def main():
         print(f"Epoch {epoch + 1}/{EPOCHS}")
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
         print(f"Val Acc: {val_acc:.4f} | Val F1: {val_f1:.4f} | Val AUC: {val_auc:.4f}")
+
         if epoch % 10 == 0:
             notify(f"Epoch {epoch + 1}/{EPOCHS}\n" +
                    f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}\n" +
                    f"Val Acc: {val_acc:.4f} | Val F1: {val_f1:.4f} | Val AUC: {val_auc:.4f}")
 
         # Сохранение лучшей модели
-        if val_loss < best_loss:
-            best_loss = val_loss
+        if val_loss < best_loss or val_f1 > best_f1:
+            if val_loss < best_loss:
+                best_loss = val_loss
+            if val_f1 > best_f1:
+                best_f1 = val_f1
+            no_improve = 0
             torch.save(model.state_dict(), 'best_triplet_model.pth')
+            print(f"Saved new best model (loss: {val_loss:.4f}, F1: {val_f1:.4f})")
+        else:
+            no_improve += 1
+            if no_improve >= patience:
+                print(f"Early stopping at epoch {epoch + 1}")
+                notify(f"Early stopping at epoch {epoch + 1}")
+                break
 
     # Сохранение кривых обучения
     plt.figure(figsize=(10, 5))
@@ -367,44 +384,6 @@ def main():
     plt.title('Distribution of Cosine Similarities')
     plt.legend()
     plt.savefig('similarity_distribution.png')
-
-
-# Функция предсказания
-def predict_similarity(model, tokenizer, text1, text2, device='cpu'):
-    model.eval()
-
-    # Токенизация
-    enc1 = tokenizer(
-        text1,
-        max_length=128,
-        padding='max_length',
-        truncation=True,
-        return_tensors='pt'
-    )
-
-    enc2 = tokenizer(
-        text2,
-        max_length=128,
-        padding='max_length',
-        truncation=True,
-        return_tensors='pt'
-    )
-
-    input_ids1 = enc1['input_ids'].to(device)
-    attention_mask1 = enc1['attention_mask'].to(device)
-    input_ids2 = enc2['input_ids'].to(device)
-    attention_mask2 = enc2['attention_mask'].to(device)
-
-    with torch.no_grad():
-        emb1 = model(input_ids1, attention_mask1)
-        emb2 = model(input_ids2, attention_mask2)
-
-        # Нормализация и косинусное сходство
-        emb1 = F.normalize(emb1, p=2, dim=1)
-        emb2 = F.normalize(emb2, p=2, dim=1)
-        similarity = F.cosine_similarity(emb1, emb2).item()
-
-    return similarity
 
 
 if __name__ == '__main__':
