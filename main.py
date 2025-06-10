@@ -483,9 +483,9 @@ def main():
     print(f"Using device: {device}")
 
     BATCH_SIZE = 12  # уменьшено для видеопамяти
-    EPOCHS = 30
+    EPOCHS = 100
     LR = 5e-6
-    NEG_SAMPLES = 3  # несколько негативов на один пример
+    NEG_SAMPLES = 4  # несколько негативов на один пример
 
     # Загрузка данных
     dir_path = "corpus"
@@ -544,7 +544,7 @@ def main():
 
     # Инициализация модели
     model = TripletBERT().to(device)
-    optimizer = AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+    optimizer = AdamW(model.parameters(), lr=LR, weight_decay=1e-2)
     criterion = TripletLoss(base_margin=0.5, hard_margin_factor=1.5)
 
     # Обучение
@@ -577,7 +577,7 @@ def main():
             print(f"Val Precision: {val_precision:.4f} | Recall {val_recall:.4f} | Threshold {val_threshold:.4f}")
 
             # Уведомление
-            if epoch % 3 == 0:
+            if epoch % 10 == 0:
                 notify(f"Epoch {epoch + 1}/{EPOCHS}\n"
                        f"Val Loss: {val_loss:.4f} | Val F1: {val_f1:.4f}\n"
                        f"Distances: Pos {val_pos_dist:.4f} | Neg {val_neg_dist:.4f}")
