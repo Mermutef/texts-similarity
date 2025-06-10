@@ -19,11 +19,10 @@ import matplotlib
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from datetime import datetime
 from extensions import notify
 
 # Конфигурация
-MODEL_NAME = 'cointegrated/rubert-tiny2'
+MODEL_NAME = 'slone/LaBSE-en-ru-myv-v1'
 BATCH_SIZE = 12
 MAX_LENGTH = 128
 NUM_EPOCHS = 200
@@ -33,11 +32,12 @@ SAVE_DIR = './'
 os.makedirs(SAVE_DIR, exist_ok=True)
 SEED = 579566
 MARGIN = 0.8  # Оптимально для текстовой схожести
-DROPOUT_RATE = 0.1  # Умеренный dropout
+DROPOUT_RATE = 0.2  # Умеренный dropout
 LEARNING_RATE = 3e-5  # Компромисс между скоростью и стабильностью
 SCALE = 1.0  # Без масштабирования потерь
 WEIGHT_DECAY = 1e-5  # Слабая L2 регуляризация
 PATIENCE = 5
+ACTIVE_LAYERS = 6
 
 
 # Настройки воспроизводимости
@@ -53,22 +53,81 @@ def set_seed(seed=SEED):
 set_seed()
 
 
-def load_and_preprocess_data(data_dir):
-    """Загрузка и предобработка данных с инверсией меток"""
-    all_data = []
+def get_file_sizes(data_dir):
+    """Возвращает размеры (количество строк) для каждого файла вопросов"""
+    file_sizes = []
     for i in range(8):
         with open(os.path.join(data_dir, f'question_{i}.csv'), 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                # Инверсия меток: 1 -> 0 (похожи), 0 -> 1 (непохожи)
-                target = 1 - int(row['mark'])
-                all_data.append({
-                    'answer': row['answer'],
-                    'true_answer': row['true_answer'],
-                    'target': target
-                })
-    random.shuffle(all_data)
-    return all_data
+            file_sizes.append(sum(1 for _ in f) - 1)  # -1 для заголовка
+    return file_sizes
+
+
+def split_file_indices(file_sizes, min_val_files=2, target_train_ratio=0.8):
+    """Разделяет индексы файлов на тренировочные и валидационные с гарантией min_val_files в валидации"""
+    n_files = len(file_sizes)
+    indices = list(range(n_files))
+    random.shuffle(indices)
+
+    # Начинаем с минимального количества файлов в валидации
+    val_indices = indices[:min_val_files]
+    train_indices = indices[min_val_files:]
+
+    # Рассчитываем текущее распределение данных
+    total_examples = sum(file_sizes)
+    train_size = sum(file_sizes[i] for i in train_indices)
+    current_ratio = train_size / total_examples
+
+    # Добавляем дополнительные файлы в валидацию, если тренировочных данных слишком много
+    idx = min_val_files
+    while current_ratio > target_train_ratio and idx < n_files:
+        val_indices.append(indices[idx])
+        train_indices.remove(indices[idx])
+        train_size = sum(file_sizes[i] for i in train_indices)
+        current_ratio = train_size / total_examples
+        idx += 1
+
+    # Если после добавления всех файлов в валидацию соотношение все еще не достигнуто
+    if current_ratio > target_train_ratio:
+        # Перераспределяем часть данных внутри файлов
+        for i in train_indices:
+            if file_sizes[i] > 0:
+                # Рассчитываем сколько примеров нужно переместить в валидацию
+                needed_reduction = int((current_ratio - target_train_ratio) * total_examples)
+                if needed_reduction > 0:
+                    # Помечаем файл как частично валидационный
+                    val_indices.append(i)
+                    # Рассчитываем сколько примеров оставить в тренировочном наборе
+                    keep_in_train = max(1, file_sizes[i] - needed_reduction)
+                    file_sizes[i] = keep_in_train
+                    break
+
+    return train_indices, val_indices
+
+
+def load_and_preprocess_data(data_dir, train_indices, val_indices):
+    """Загрузка данных с разделением на тренировочные и валидационные файлы"""
+    train_data = []
+    val_data = []
+
+    for i in range(8):
+        if i in train_indices or i in val_indices:
+            with open(os.path.join(data_dir, f'question_{i}.csv'), 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    item = {
+                        'answer': row['answer'],
+                        'true_answer': row['true_answer'],
+                        'target': 1 - int(row['mark'])  # Инверсия меток
+                    }
+
+                    if i in train_indices:
+                        train_data.append(item)
+                    else:
+                        val_data.append(item)
+
+    random.shuffle(train_data)
+    random.shuffle(val_data)
+    return train_data, val_data
 
 
 class SiameseDataset(Dataset):
@@ -85,14 +144,15 @@ class SiameseDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         enc1 = self.tokenizer(
-            item['answer'],
+            item['true_answer'],
             max_length=self.max_length,
             padding='max_length',
             truncation=True,
             return_tensors='pt'
         )
+
         enc2 = self.tokenizer(
-            item['true_answer'],
+            item['answer'],
             max_length=self.max_length,
             padding='max_length',
             truncation=True,
@@ -117,7 +177,7 @@ class SiameseNetwork(nn.Module):
             param.requires_grad = False
 
         # Разморозка верхних слоев
-        for layer in self.bert.encoder.layer[-3:]:
+        for layer in self.bert.encoder.layer[-ACTIVE_LAYERS:]:
             for param in layer.parameters():
                 param.requires_grad = True
 
@@ -158,11 +218,8 @@ class ContrastiveLoss(nn.Module):
         return self.scale * loss
 
 
-def create_data_loaders(data, tokenizer, val_split=0.2):
-    """Создание DataLoader'ов"""
-    val_size = int(len(data) * val_split)
-    train_data, val_data = random_split(data, [len(data) - val_size, val_size])
-
+def create_data_loaders(train_data, val_data, tokenizer):
+    """Создание DataLoader'ов для готовых наборов данных"""
     train_dataset = SiameseDataset(train_data, tokenizer, MAX_LENGTH)
     val_dataset = SiameseDataset(val_data, tokenizer, MAX_LENGTH)
 
@@ -383,8 +440,19 @@ def plot_metrics(metrics_file, save_dir):
 def main():
     # Инициализация
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    data = load_and_preprocess_data(DATA_DIR)
-    train_loader, val_loader = create_data_loaders(data, tokenizer)
+
+    file_sizes = get_file_sizes(DATA_DIR)
+
+    train_indices, val_indices = split_file_indices(file_sizes)
+    print(f"Train files: {train_indices}")
+    print(f"Validation files: {val_indices}")
+
+    train_data, val_data = load_and_preprocess_data(DATA_DIR, train_indices, val_indices)
+
+    print(f"Train samples: {len(train_data)}")
+    print(f"Validation samples: {len(val_data)}")
+
+    train_loader, val_loader = create_data_loaders(train_data, val_data, tokenizer)
 
     # Модель и оптимизатор
     model = SiameseNetwork(dropout_rate=DROPOUT_RATE).to(DEVICE)
@@ -503,18 +571,18 @@ def main():
             stop_training = True
             stop_reasons.append(f"Patience exhausted ({PATIENCE} epochs)")
 
-        # 2. Увеличивается разрыв между train и val F1
-        if overfit_gap > min_overfit_gap + 0.05:
-            stop_training = True
-            stop_reasons.append(f"Overfit gap increased from {min_overfit_gap:.4f} to {overfit_gap:.4f}")
-
-        # 3. Слишком большой абсолютный разрыв
-        if overfit_gap > overfit_gap_threshold:
-            stop_training = True
-            stop_reasons.append(f"Overfit gap too large ({overfit_gap:.4f} > {overfit_gap_threshold})")
+        # # 2. Увеличивается разрыв между train и val F1
+        # if overfit_gap > min_overfit_gap + 0.05:
+        #     stop_training = True
+        #     stop_reasons.append(f"Overfit gap increased from {min_overfit_gap:.4f} to {overfit_gap:.4f}")
+        #
+        # # 3. Слишком большой абсолютный разрыв
+        # if overfit_gap > overfit_gap_threshold:
+        #     stop_training = True
+        #     stop_reasons.append(f"Overfit gap too large ({overfit_gap:.4f} > {overfit_gap_threshold})")
 
         # 4. Увеличиваются потери на валидации
-        if val_loss > best_val_loss * 1.1 and epoch > 10:
+        if val_loss > best_val_loss * 1.5 and epoch > 10:
             stop_training = True
             stop_reasons.append(f"Val loss increased from {best_val_loss:.4f} to {val_loss:.4f}")
 
